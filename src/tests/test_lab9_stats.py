@@ -25,6 +25,11 @@ def test_confusion_tone(stats):
     assert stats.confusion(*_labels()) == {"tp": 24, "fp": 4, "fn": 6, "tn": 66}
 
 
+def test_confusion_rejects_unknown_labels(stats):
+    with pytest.raises(ValueError):
+        stats.confusion(["UNKNOWN"], ["PASS"])
+
+
 def test_precision_recall_kappa_tone(stats):
     p, r = stats.precision_recall(*_labels())
     assert (round(p, 3), round(r, 3)) == (0.857, 0.8)

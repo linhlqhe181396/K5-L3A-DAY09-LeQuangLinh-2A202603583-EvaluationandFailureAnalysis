@@ -53,6 +53,17 @@ def test_integrity_flags_nan_and_dropped_rows():
     assert gate.integrity_check(dropped, base, SPEC)
 
 
+def test_integrity_handles_malformed_manifest_and_rows():
+    from lab9 import gate
+
+    base = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    malformed = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    malformed["manifest"]["seeds"] = None
+    malformed["manifest"]["items"] = None
+    malformed["rows"][0] = None
+    assert gate.integrity_check(malformed, base, SPEC)
+
+
 def test_integrity_flags_loosened_spec():
     from lab9 import gate
 
@@ -61,6 +72,43 @@ def test_integrity_flags_loosened_spec():
     loose["metrics"][0]["threshold"]["min"] = 0.5
     assert gate.integrity_check(base, base, loose, SPEC)
     assert gate.integrity_check(base, base, SPEC, SPEC) == []
+
+
+def test_integrity_flags_evaluator_failures_none_and_slice_relabeling():
+    from lab9 import gate
+
+    base = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    broken = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    broken["evaluator_failures"] = ["E-001@1:grader failed"]
+    broken["rows"][0]["pass_rate"] = None
+    broken["rows"][0]["slices"] = ["other"]
+    problems = gate.integrity_check(broken, base, SPEC)
+    assert any("evaluator failure" in problem for problem in problems)
+    assert any("None" in problem for problem in problems)
+    assert any("slice tags differ" in problem for problem in problems)
+
+
+def test_integrity_ratchets_slices():
+    from lab9 import gate
+
+    base = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    old = dict(SPEC, slices=[{"name": "denial", "metric": "pass_rate", "min": 0.9,
+                              "blocking": True, "no_significant_drop": True}])
+    loosened = dict(SPEC, slices=[])
+    assert any("slice denial disappeared" in problem
+               for problem in gate.integrity_check(base, base, loosened, old))
+
+
+def test_gate_uses_baseline_embedded_spec_for_ratchet():
+    from lab9 import gate
+
+    baseline = _report(copy.deepcopy(ROWS), {"pass_rate": 1.0})
+    baseline["metric_spec"] = copy.deepcopy(SPEC)
+    loose_spec = copy.deepcopy(SPEC)
+    loose_spec["metrics"][0]["threshold"]["min"] = 0.5
+    blocked, lines = gate.check(baseline, baseline, loose_spec)
+    assert blocked == ["integrity"]
+    assert any("ratchet: metric pass_rate loosened min threshold" in line for line in lines)
 
 
 def test_slice_check_blocks_a_slice_below_floor():
